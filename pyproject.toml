@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linux-rufus"
+version = "1.0.0"
+description = "A reliable, safety-first Linux utility inspired by Rufus for creating bootable USB drives"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "Linux Rufus Contributors" }
+]
+keywords = ["rufus", "usb", "bootable", "iso", "flasher", "uefi", "mbr", "linux"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: X11 Applications",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities"
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+tui = [
+    "rich>=12.0.0"
+]
+gui = [
+    "PyQt6>=6.4.0"
+]
+dev = [
+    "pytest>=7.0.0",
+    "rich>=12.0.0"
+]
+
+[project.scripts]
+linux-rufus = "linux_rufus.cli.main:main"
+lrufus = "linux_rufus.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/amitpadhan979/linux-rufus"
+Repository = "https://github.com/amitpadhan979/linux-rufus.git"
+Issues = "https://github.com/amitpadhan979/linux-rufus/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["linux_rufus*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
