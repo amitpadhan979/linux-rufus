@@ -71,6 +71,13 @@ sudo linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb
 sudo linux-rufus burn --iso Win11.iso --target /dev/sdb --scheme GPT --fs fat32
 ```
 
+### 6. Quickstart Dry-Run Verification
+To verify target integrity without writing to hardware:
+```bash
+linux-rufus list --dry-run
+```
+
+
 ---
 
 ## 🛡️ Safety Shield Architecture
