@@ -26,11 +26,20 @@ jobs:
         python -m pip install --upgrade pip
         pip install .[dev]
 
+    - name: Verify Python code syntax
+      run: |
+        python -m py_compile $(find linux_rufus tests -name "*.py")
+
     - name: Run unit test suite
       run: |
         python -m unittest discover -s tests -p "test_*.py"
 
-    - name: Test CLI entrypoints
+    - name: Test CLI entrypoints and dry-run
       run: |
         python -m linux_rufus --help
-        python -m linux_rufus list
+        python -m linux_rufus list --dry-run
+
+    - name: Build distribution package
+      run: |
+        python -m pip install build
+        python -m build
