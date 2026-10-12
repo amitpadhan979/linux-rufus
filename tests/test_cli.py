@@ -29,6 +29,93 @@ class TestCLI(unittest.TestCase):
             ret = main()
             self.assertEqual(ret, 0)
 
+    @patch("linux_rufus.core.devices.DeviceManager.scan_devices")
+    def test_cli_list_dry_run(self, mock_scan):
+        mock_scan.return_value = []
+        with patch.object(sys, "argv", ["linux-rufus", "list", "--dry-run"]):
+            ret = main()
+            self.assertEqual(ret, 0)
+
+    @patch("os.path.exists", return_value=True)
+    @patch("linux_rufus.core.devices.DeviceManager.validate_target_safety")
+    @patch("linux_rufus.core.iso.ISOInspector.inspect")
+    def test_cli_burn_dry_run(self, mock_inspect, mock_validate, mock_exists):
+        from linux_rufus.core.devices import BlockDevice
+        from linux_rufus.core.iso import ISOInfo
+
+        mock_validate.return_value = BlockDevice(
+            name="sdb",
+            path="/dev/sdb",
+            size=16000000000,
+            removable=True,
+            model="Flash Drive",
+            vendor="SanDisk",
+        )
+        mock_inspect.return_value = ISOInfo(
+            file_path="test.iso",
+            file_size=1000000,
+            volume_id="TEST_ISO",
+            is_iso=True,
+            is_hybrid=True,
+            has_uefi=True,
+            has_bios=True,
+            is_windows=False,
+            recommended_mode="raw",
+            recommended_partition_scheme="GPT",
+            recommended_target_system="UEFI",
+        )
+
+        with patch.object(sys, "argv", ["linux-rufus", "burn", "--iso", "test.iso", "--target", "/dev/sdb", "--dry-run"]):
+            ret = main()
+            self.assertEqual(ret, 0)
+
+    @patch("os.path.exists", return_value=True)
+    @patch("linux_rufus.core.devices.DeviceManager.validate_target_safety")
+    @patch("linux_rufus.core.iso.ISOInspector.inspect")
+    def test_cli_burn_windows_bypass(self, mock_inspect, mock_validate, mock_exists):
+        from linux_rufus.core.devices import BlockDevice
+        from linux_rufus.core.iso import ISOInfo
+
+        mock_validate.return_value = BlockDevice(
+            name="sdb",
+            path="/dev/sdb",
+            size=16000000000,
+            removable=True,
+            model="Flash Drive",
+            vendor="SanDisk",
+        )
+        mock_inspect.return_value = ISOInfo(
+            file_path="Win11.iso",
+            file_size=5000000000,
+            volume_id="WIN11_INSTALL",
+            is_iso=True,
+            is_hybrid=False,
+            has_uefi=True,
+            has_bios=False,
+            is_windows=True,
+            recommended_mode="partition",
+            recommended_partition_scheme="GPT",
+            recommended_target_system="UEFI (non CSM)",
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "linux-rufus",
+                "burn",
+                "--iso",
+                "Win11.iso",
+                "--target",
+                "/dev/sdb",
+                "--bypass-tpm",
+                "--bypass-secure-boot",
+                "--dry-run",
+            ],
+        ):
+            ret = main()
+            self.assertEqual(ret, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

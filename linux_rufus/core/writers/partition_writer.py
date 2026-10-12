@@ -10,11 +10,13 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from linux_rufus.core.writers.base import BaseWriter, ProgressCallback, WriteProgress
 
 logger = logging.getLogger(__name__)
+
+PostExtractCallback = Callable[[str], None]
 
 
 class PartitionWriter(BaseWriter):
@@ -31,11 +33,15 @@ class PartitionWriter(BaseWriter):
         partition_scheme: str = "GPT",  # "GPT" or "MBR"
         file_system: str = "fat32",      # "fat32", "ntfs", "exfat", "ext4"
         volume_label: str = "RUFUS_USB",
+        post_extract_callback: Optional[PostExtractCallback] = None,
+        dry_run: bool = False,
     ) -> None:
         super().__init__(source_path, target_device)
         self.partition_scheme = partition_scheme.upper()
         self.file_system = file_system.lower()
         self.volume_label = volume_label[:11] if self.file_system == "fat32" else volume_label
+        self.post_extract_callback = post_extract_callback
+        self.dry_run = dry_run
 
     def _get_partition_path(self, part_num: int = 1) -> str:
         """Derive partition device path (handles /dev/sdX1 vs /dev/nvme0n1p1)."""
@@ -63,6 +69,15 @@ class PartitionWriter(BaseWriter):
                         status_text=status,
                     )
                 )
+
+        if self.dry_run:
+            emit(15.0, f"[Dry-Run] Simulating {self.partition_scheme} partition table creation...")
+            emit(40.0, f"[Dry-Run] Simulating format to {self.file_system.upper()}...")
+            emit(70.0, "[Dry-Run] Simulating ISO payload extraction...")
+            if self.post_extract_callback:
+                emit(85.0, "[Dry-Run] Simulating post-extraction hooks...")
+            emit(100.0, "[Dry-Run] Simulated write completed successfully.")
+            return True
 
         # Step 1: Wipe filesystem signatures
         emit(5.0, "Clearing existing disk signatures...")
@@ -181,6 +196,13 @@ class PartitionWriter(BaseWriter):
                         src_file = os.path.join(root, file_name)
                         dest_file = os.path.join(dest_dir, file_name)
                         shutil.copy2(src_file, dest_file)
+
+            if self.post_extract_callback:
+                emit(85.0, "Applying post-extraction configurations...")
+                try:
+                    self.post_extract_callback(target_mount)
+                except Exception as cb_err:
+                    logger.error(f"Post-extraction callback error: {cb_err}")
 
             emit(90.0, "Syncing files to drive...")
             subprocess.run(["sync"], check=True)

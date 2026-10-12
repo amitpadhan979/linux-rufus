@@ -69,12 +69,19 @@ sudo linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb
 
 # Burn with explicit partition scheme and filesystem
 sudo linux-rufus burn --iso Win11.iso --target /dev/sdb --scheme GPT --fs fat32
+
+# Burn Windows 11 with TPM and Secure Boot check bypasses
+sudo linux-rufus burn --iso Win11.iso --target /dev/sdb --bypass-tpm --bypass-secure-boot
 ```
 
 ### 6. Quickstart Dry-Run Verification
-To verify target integrity without writing to hardware:
+To verify target integrity and parameter validity without writing to hardware or requiring root:
 ```bash
+# Verify detected block devices
 linux-rufus list --dry-run
+
+# Simulate a burn operation safely
+linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb --dry-run
 ```
 
 

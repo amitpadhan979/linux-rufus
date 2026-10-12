@@ -25,7 +25,8 @@ def command_list(args: argparse.Namespace) -> int:
     mgr = DeviceManager(allow_non_removable=args.all)
     devices = mgr.scan_devices()
 
-    print(f"\n--- Linux Rufus Block Device List ({len(devices)} detected) ---")
+    dry_run_suffix = " [Dry-Run Mode]" if getattr(args, "dry_run", False) else ""
+    print(f"\n--- Linux Rufus Block Device List ({len(devices)} detected){dry_run_suffix} ---")
     if not devices:
         print("No block devices found.")
         return 0
@@ -89,15 +90,6 @@ def command_burn(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Require root for writing directly to block devices
-    if not is_root():
-        print(
-            f"Error: Writing directly to {args.target} requires root privileges.",
-            file=sys.stderr,
-        )
-        print(f"Please run with sudo: sudo linux-rufus burn --iso '{args.iso}' --target '{args.target}'", file=sys.stderr)
-        return 1
-
     inspector = ISOInspector(args.iso)
     info = inspector.inspect()
 
@@ -107,6 +99,19 @@ def command_burn(args: argparse.Namespace) -> int:
     print(f"  Source:  {args.iso} ({info.file_size_human})")
     print(f"  Target:  {target_dev.display_name}")
     print(f"  Mode:    {mode.upper()}")
+
+    if getattr(args, "dry_run", False):
+        print("\n✔ [Dry-Run] Target safety validated and write parameters verified without hardware modification.")
+        return 0
+
+    # Require root for writing directly to block devices
+    if not is_root():
+        print(
+            f"Error: Writing directly to {args.target} requires root privileges.",
+            file=sys.stderr,
+        )
+        print(f"Please run with sudo: sudo linux-rufus burn --iso '{args.iso}' --target '{args.target}'", file=sys.stderr)
+        return 1
 
     if not args.yes:
         print("\nWARNING: ALL DATA ON THE TARGET DEVICE WILL BE PERMANENTLY DESTROYED!")
@@ -124,7 +129,13 @@ def command_burn(args: argparse.Namespace) -> int:
     if mode == "raw":
         writer = RawWriter(source_path=args.iso, target_device=target_dev.path)
     elif info.is_windows:
-        writer = WindowsWriter(source_path=args.iso, target_device=target_dev.path)
+        writer = WindowsWriter(
+            source_path=args.iso,
+            target_device=target_dev.path,
+            bypass_tpm=getattr(args, "bypass_tpm", False),
+            bypass_ram=getattr(args, "bypass_ram", False),
+            bypass_secure_boot=getattr(args, "bypass_secure_boot", False),
+        )
     else:
         writer = PartitionWriter(
             source_path=args.iso,
@@ -164,6 +175,7 @@ def main() -> int:
     # Command: list
     parser_list = subparsers.add_parser("list", help="List detected removable USB devices safely")
     parser_list.add_argument("--all", action="store_true", help="Include internal non-removable drives in list")
+    parser_list.add_argument("--dry-run", action="store_true", help="Perform verification check without making modifications")
 
     # Command: info
     parser_info = subparsers.add_parser("info", help="Inspect and display ISO file boot properties")
@@ -178,6 +190,10 @@ def main() -> int:
     parser_burn.add_argument("--fs", choices=["fat32", "ntfs", "exfat", "ext4"], help="Filesystem format")
     parser_burn.add_argument("--label", help="Custom volume label")
     parser_burn.add_argument("--allow-internal", action="store_true", help="Allow targeting internal drives (CAUTION)")
+    parser_burn.add_argument("--bypass-tpm", action="store_true", help="Bypass Windows 11 TPM 2.0 and CPU checks")
+    parser_burn.add_argument("--bypass-secure-boot", action="store_true", help="Bypass Windows 11 Secure Boot requirement")
+    parser_burn.add_argument("--bypass-ram", action="store_true", help="Bypass Windows 11 minimum RAM (4GB) requirement")
+    parser_burn.add_argument("--dry-run", action="store_true", help="Simulate burn verification without writing to hardware")
     parser_burn.add_argument("-y", "--yes", action="store_true", help="Skip interactive confirmation")
 
     # Command: gui
