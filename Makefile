@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint run-cli run-gui clean
+.PHONY: help install dev test lint run-cli run-gui deb clean
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
@@ -10,6 +10,7 @@ help:
 	@echo "  make test        - Run test suite with pytest"
 	@echo "  make run-cli     - Launch interactive CLI / TUI"
 	@echo "  make run-gui     - Launch Rufus desktop graphical interface"
+	@echo "  make deb         - Build Debian/Ubuntu .deb package"
 	@echo "  make clean       - Remove cache and build artifacts"
 
 install:
@@ -26,6 +27,9 @@ run-cli:
 
 run-gui:
 	$(PYTHON) -m linux_rufus gui
+
+deb:
+	bash scripts/build_deb.sh
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

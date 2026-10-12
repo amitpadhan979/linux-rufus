@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Linux Rufus
+Comment=Create bootable USB drives safely
+GenericName=Bootable USB Creator
+Exec=/usr/bin/linux-rufus gui
+Icon=drive-removable-media
+Terminal=false
+Type=Application
+Categories=Utility;System;Archiving;
+Keywords=usb;bootable;iso;flash;rufus;
+StartupNotify=true

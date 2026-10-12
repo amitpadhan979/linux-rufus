@@ -19,6 +19,12 @@ Unlike Windows Rufus (which is Windows-only), **`linux-rufus`** brings the belov
 
 ## 🚀 Installation
 
+### From Debian / Ubuntu (`.deb`) Package
+Download the latest `linux-rufus_1.0.0_all.deb` from [Releases](https://github.com/amitpadhan979/linux-rufus/releases) and install via `apt`:
+```bash
+sudo apt install ./linux-rufus_1.0.0_all.deb
+```
+
 ### Using pip
 ```bash
 git clone https://github.com/amitpadhan979/linux-rufus.git
@@ -26,11 +32,12 @@ cd linux-rufus
 pip install .
 ```
 
-### For development
+### For development / building `.deb`
 ```bash
 git clone https://github.com/amitpadhan979/linux-rufus.git
 cd linux-rufus
 make dev
+make deb   # Generates dist/linux-rufus_<version>_all.deb
 ```
 
 ---
