@@ -2,6 +2,7 @@
 Unit tests for DeviceManager and safety validations.
 """
 
+import subprocess
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -114,6 +115,52 @@ class TestDevices(unittest.TestCase):
         mgr = DeviceManager()
         with self.assertRaises(SafetyViolationError):
             mgr.validate_target_safety("/dev/sda")
+
+    @patch("subprocess.run")
+    @patch("os.listdir", side_effect=PermissionError("Permission denied: /sys/block"))
+    @patch("os.path.exists", return_value=True)
+    def test_scan_devices_fallback_permission_denied(self, mock_exists, mock_listdir, mock_run):
+        # Simulate lsblk failing with exit code 1
+        mock_run.side_effect = subprocess.CalledProcessError(1, ["lsblk"])
+        mgr = DeviceManager()
+        # Must not raise PermissionError or CalledProcessError
+        devices = mgr.scan_devices()
+        self.assertIsInstance(devices, list)
+
+    @patch("subprocess.run")
+    def test_lsblk_legacy_singular_mountpoint(self, mock_run):
+        # Older lsblk output with singular 'mountpoint' instead of 'mountpoints'
+        mock_output = {
+            "blockdevices": [
+                {
+                    "name": "sdb",
+                    "path": "/dev/sdb",
+                    "size": 16000000000,
+                    "rm": True,
+                    "tran": "usb",
+                    "type": "disk",
+                    "mountpoint": None,
+                    "children": [
+                        {
+                            "name": "sdb1",
+                            "path": "/dev/sdb1",
+                            "size": 16000000000,
+                            "type": "part",
+                            "mountpoint": "/media/usb",
+                        }
+                    ],
+                }
+            ]
+        }
+        mock_res = MagicMock()
+        mock_res.stdout = __import__("json").dumps(mock_output)
+        mock_run.return_value = mock_res
+
+        mgr = DeviceManager()
+        devices = mgr.scan_devices()
+        self.assertEqual(len(devices), 1)
+        self.assertIn("/media/usb", devices[0].mountpoints)
+        self.assertTrue(devices[0].is_safe_target)
 
 
 if __name__ == "__main__":

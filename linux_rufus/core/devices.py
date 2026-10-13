@@ -113,19 +113,23 @@ class DeviceManager:
 
     def scan_devices(self) -> List[BlockDevice]:
         """Scan system block devices using lsblk and filter out unsafe targets."""
-        try:
-            cmd = [
-                "lsblk",
-                "-J",
-                "-b",
-                "-o",
-                "NAME,KNAME,PATH,SIZE,ROTA,RM,MODEL,VENDOR,TRAN,MOUNTPOINTS,TYPE,FSTYPE,LABEL",
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            data = json.loads(result.stdout)
-            raw_devices = data.get("blockdevices", [])
-        except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
-            logger.warning(f"lsblk JSON query failed ({e}), attempting fallback scan.")
+        raw_devices = []
+        # Attempt modern lsblk first (with MOUNTPOINTS), then fallback to legacy (MOUNTPOINT)
+        for cols in [
+            "NAME,KNAME,PATH,SIZE,ROTA,RM,MODEL,VENDOR,TRAN,MOUNTPOINTS,TYPE,FSTYPE,LABEL",
+            "NAME,KNAME,PATH,SIZE,ROTA,RM,MODEL,VENDOR,TRAN,MOUNTPOINT,TYPE,FSTYPE,LABEL",
+        ]:
+            try:
+                cmd = ["lsblk", "-J", "-b", "-o", cols]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                data = json.loads(result.stdout)
+                raw_devices = data.get("blockdevices", [])
+                break
+            except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+                continue
+
+        if not raw_devices:
+            logger.warning("lsblk JSON queries failed or unavailable, attempting fallback scan.")
             return self._fallback_scan()
 
         system_mounts = self.get_system_mountpoints()
@@ -149,10 +153,12 @@ class DeviceManager:
             if transport == "usb":
                 removable = True
 
-            # Extract partitions and mountpoints
+            # Extract partitions and mountpoints (handles both modern list 'mountpoints' and legacy string 'mountpoint')
             mountpoints: List[str] = []
             if item.get("mountpoints"):
                 mountpoints.extend([m for m in item.get("mountpoints", []) if m])
+            elif item.get("mountpoint"):
+                mountpoints.append(item.get("mountpoint"))
 
             partitions: List[PartitionInfo] = []
             has_critical_mount = any(m in CRITICAL_MOUNTS for m in mountpoints)
@@ -163,7 +169,12 @@ class DeviceManager:
                 child_size = int(child.get("size") or 0)
                 child_fstype = child.get("fstype")
                 child_label = child.get("label")
-                child_mounts = [m for m in child.get("mountpoints", []) if m]
+
+                child_mounts: List[str] = []
+                if child.get("mountpoints"):
+                    child_mounts.extend([m for m in child.get("mountpoints", []) if m])
+                elif child.get("mountpoint"):
+                    child_mounts.append(child.get("mountpoint"))
 
                 mountpoints.extend(child_mounts)
                 if any(m in CRITICAL_MOUNTS for m in child_mounts):
@@ -211,11 +222,38 @@ class DeviceManager:
         """Fallback device scanner if lsblk JSON is unavailable."""
         devices: List[BlockDevice] = []
         sys_block = "/sys/block"
-        if not os.path.exists(sys_block):
-            return devices
+        names: List[str] = []
+        proc_sizes: Dict[str, int] = {}
 
-        for name in os.listdir(sys_block):
-            if name.startswith(("loop", "ram", "sr")):
+        # 1. Try reading /sys/block
+        if os.path.exists(sys_block):
+            try:
+                names = os.listdir(sys_block)
+            except (PermissionError, OSError) as pe:
+                logger.warning(f"Could not read {sys_block} ({pe}), falling back to /proc/partitions.")
+
+        # 2. If /sys/block is unreadable or empty, try /proc/partitions
+        if not names and os.path.exists("/proc/partitions"):
+            try:
+                with open("/proc/partitions", "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f.readlines()[2:]:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            dev_name = parts[3]
+                            # Filter out partitions (e.g. sda1 vs sda, nvme0n1p1 vs nvme0n1)
+                            if re.match(r"^(sd[a-z]|hd[a-z]|vd[a-z]|xvd[a-z]|nvme\d+n\d+|mmcblk\d+)$", dev_name):
+                                names.append(dev_name)
+                                try:
+                                    proc_sizes[dev_name] = int(parts[2]) * 1024
+                                except ValueError:
+                                    pass
+            except Exception as e:
+                logger.warning(f"Could not read /proc/partitions ({e}).")
+
+        system_mounts = self.get_system_mountpoints()
+
+        for name in names:
+            if name.startswith(("loop", "ram", "sr", "dm-")):
                 continue
             path = f"/dev/{name}"
             size = 0
@@ -227,6 +265,18 @@ class DeviceManager:
                 except Exception:
                     size = 0
 
+            if size == 0 and name in proc_sizes:
+                size = proc_sizes[name]
+
+            if size == 0:
+                try:
+                    out = subprocess.check_output(
+                        ["blockdev", "--getsize64", path], text=True, stderr=subprocess.DEVNULL
+                    )
+                    size = int(out.strip())
+                except Exception:
+                    pass
+
             removable = False
             rm_file = os.path.join(sys_block, name, "removable")
             if os.path.exists(rm_file):
@@ -236,13 +286,27 @@ class DeviceManager:
                 except Exception:
                     pass
 
+            if not removable:
+                try:
+                    out = subprocess.check_output(
+                        ["udevadm", "info", "-q", "property", "-n", path],
+                        text=True,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    if "ID_BUS=usb" in out or "ID_DRIVE_FLASH" in out:
+                        removable = True
+                except Exception:
+                    pass
+
+            is_safe = (removable or self.allow_non_removable) and size > 0
+
             devices.append(
                 BlockDevice(
                     path=path,
                     name=name,
                     size=size,
                     removable=removable,
-                    is_safe_target=removable and size > 0,
+                    is_safe_target=is_safe,
                 )
             )
         return devices
