@@ -190,11 +190,39 @@ def _launch_tkinter(tk, ttk, filedialog, messagebox) -> int:
     status_lbl = ttk.Label(status_frame, textvariable=status_label_var, anchor="center")
     status_lbl.pack(fill="x")
 
+    # --- Frame: Advanced Rufus Options ---
+    adv_frame = ttk.LabelFrame(root, text="Advanced Rufus Options", padding=(10, 6))
+    adv_frame.pack(fill="x", padx=12, pady=4)
+
+    bypass_tpm_var = tk.BooleanVar(value=True)
+    bypass_ram_var = tk.BooleanVar(value=False)
+    verify_write_var = tk.BooleanVar(value=False)
+
+    ttk.Checkbutton(
+        adv_frame,
+        text="Bypass Windows 11 TPM 2.0 & Secure Boot checks",
+        variable=bypass_tpm_var,
+    ).pack(anchor="w")
+    ttk.Checkbutton(
+        adv_frame,
+        text="Bypass Windows 11 4GB+ RAM check",
+        variable=bypass_ram_var,
+    ).pack(anchor="w")
+    ttk.Checkbutton(
+        adv_frame,
+        text="Verify USB drive data after write",
+        variable=verify_write_var,
+    ).pack(anchor="w")
+
     # --- Action Buttons ---
     btn_frame = ttk.Frame(root, padding=(12, 10))
     btn_frame.pack(fill="x", side="bottom")
 
     active_writer = [None]
+
+    def _get_selected_fs() -> str:
+        raw_fs = file_system_var.get().split()[0].lower()
+        return raw_fs if raw_fs in ["fat32", "ntfs", "exfat", "ext4"] else "fat32"
 
     def on_start():
         if not iso_path_var.get() or not os.path.exists(iso_path_var.get()):
@@ -241,16 +269,28 @@ def _launch_tkinter(tk, ttk, filedialog, messagebox) -> int:
                         ),
                     )
 
+                chosen_fs = _get_selected_fs()
+
                 if info.is_windows:
-                    writer = WindowsWriter(source_path=iso_path_var.get(), target_device=target_dev.path)
+                    writer = WindowsWriter(
+                        source_path=iso_path_var.get(),
+                        target_device=target_dev.path,
+                        bypass_tpm=bypass_tpm_var.get(),
+                        bypass_secure_boot=bypass_tpm_var.get(),
+                        bypass_ram=bypass_ram_var.get(),
+                    )
                 elif info.is_hybrid:
-                    writer = RawWriter(source_path=iso_path_var.get(), target_device=target_dev.path)
+                    writer = RawWriter(
+                        source_path=iso_path_var.get(),
+                        target_device=target_dev.path,
+                        verify=verify_write_var.get(),
+                    )
                 else:
                     writer = PartitionWriter(
                         source_path=iso_path_var.get(),
                         target_device=target_dev.path,
                         partition_scheme=partition_scheme_var.get(),
-                        file_system="fat32",
+                        file_system=chosen_fs,
                         volume_label=volume_label_var.get(),
                     )
 

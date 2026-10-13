@@ -116,6 +116,69 @@ class TestCLI(unittest.TestCase):
             ret = main()
             self.assertEqual(ret, 0)
 
+    @patch("os.path.exists", return_value=True)
+    @patch("linux_rufus.core.iso.ISOInspector.inspect")
+    def test_cli_info_hash(self, mock_inspect, mock_exists):
+        from linux_rufus.core.iso import ISOInfo
+        mock_inspect.return_value = ISOInfo(
+            file_path="ubuntu.iso",
+            file_size=2000000000,
+            volume_id="UBUNTU_2404",
+            sha256="abcdef1234567890",
+            md5="1234567890abcdef",
+        )
+        with patch.object(sys, "argv", ["linux-rufus", "info", "ubuntu.iso", "--hash"]):
+            ret = main()
+            self.assertEqual(ret, 0)
+
+    @patch("os.path.exists", return_value=True)
+    @patch("linux_rufus.core.devices.DeviceManager.validate_target_safety")
+    @patch("linux_rufus.core.iso.ISOInspector.inspect")
+    def test_cli_burn_verify_and_persistence(self, mock_inspect, mock_validate, mock_exists):
+        from linux_rufus.core.devices import BlockDevice
+        from linux_rufus.core.iso import ISOInfo
+
+        mock_validate.return_value = BlockDevice(
+            name="sdb",
+            path="/dev/sdb",
+            size=16000000000,
+            removable=True,
+            model="Flash Drive",
+            vendor="SanDisk",
+        )
+        mock_inspect.return_value = ISOInfo(
+            file_path="ubuntu.iso",
+            file_size=2000000000,
+            volume_id="UBUNTU",
+            is_iso=True,
+            is_hybrid=True,
+            has_uefi=True,
+            has_bios=True,
+            is_windows=False,
+            recommended_mode="raw",
+            recommended_partition_scheme="MBR",
+            recommended_target_system="BIOS or UEFI",
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "linux-rufus",
+                "burn",
+                "--iso",
+                "ubuntu.iso",
+                "--target",
+                "/dev/sdb",
+                "--verify",
+                "--persistence-size",
+                "2G",
+                "--dry-run",
+            ],
+        ):
+            ret = main()
+            self.assertEqual(ret, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

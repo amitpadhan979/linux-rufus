@@ -64,15 +64,21 @@ linux-rufus list
 *(Add `--all` to view internal drives and check their safety lock status).*
 
 ### 4. Inspect an ISO / Disk Image
-Analyze bootloader signatures, volume labels, and recommended burn modes:
+Analyze bootloader signatures, volume labels, and recommended burn modes (add `--hash` to compute SHA256 and MD5):
 ```bash
-linux-rufus info ubuntu-24.04-desktop-amd64.iso
+linux-rufus info ubuntu-24.04-desktop-amd64.iso --hash
 ```
 
 ### 5. Burn Image via Command Line
 ```bash
 # Burn using recommended mode (requires root / sudo for block writing)
 sudo linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb
+
+# Burn with post-write data verification
+sudo linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb --verify
+
+# Burn live Linux with 2GB persistent storage partition (casper-rw)
+sudo linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb --persistence-size 2G
 
 # Burn with explicit partition scheme and filesystem
 sudo linux-rufus burn --iso Win11.iso --target /dev/sdb --scheme GPT --fs fat32
@@ -87,8 +93,8 @@ To verify target integrity and parameter validity without writing to hardware or
 # Verify detected block devices
 linux-rufus list --dry-run
 
-# Simulate a burn operation safely
-linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb --dry-run
+# Simulate a burn operation safely with verification and persistence
+linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb --verify --persistence-size 2G --dry-run
 ```
 
 

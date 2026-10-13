@@ -106,12 +106,17 @@ def run_interactive_tui() -> int:
     elif mode_choice == "2":
         mode = "partition"
 
-    # Step 4: Final Confirmation Warning
+    # Step 4: Verification Option
+    verify_choice = input("\nEnable post-write data verification? [y/N]: ").strip().lower()
+    verify_enabled = verify_choice in ["y", "yes"]
+
+    # Step 5: Final Confirmation Warning
     print("\n" + "!" * 60)
     print("WARNING: ALL DATA ON THE TARGET DRIVE WILL BE PERMANENTLY ERASED!")
-    print(f"  Target:  {selected_dev.display_name}")
-    print(f"  Image:   {iso_path}")
-    print(f"  Mode:    {mode.upper()}")
+    print(f"  Target:       {selected_dev.display_name}")
+    print(f"  Image:        {iso_path}")
+    print(f"  Mode:         {mode.upper()}")
+    print(f"  Verification: {'Enabled' if verify_enabled else 'Disabled'}")
     print("!" * 60)
 
     confirm = input("\nType 'YES' to proceed with wiping and burning: ").strip()
@@ -122,15 +127,20 @@ def run_interactive_tui() -> int:
     print("\nUnmounting partitions and preparing drive...")
     DeviceManager.unmount_device(selected_dev.path)
 
-    # Step 5: Execute Write
+    # Step 6: Execute Write
     print("\nStarting write operation...\n")
     start_time = time.time()
 
     try:
         if mode == "raw":
-            writer = RawWriter(source_path=iso_path, target_device=selected_dev.path)
+            writer = RawWriter(source_path=iso_path, target_device=selected_dev.path, verify=verify_enabled)
         elif info.is_windows:
-            writer = WindowsWriter(source_path=iso_path, target_device=selected_dev.path)
+            writer = WindowsWriter(
+                source_path=iso_path,
+                target_device=selected_dev.path,
+                bypass_tpm=True,
+                bypass_secure_boot=True,
+            )
         else:
             writer = PartitionWriter(
                 source_path=iso_path,

@@ -58,7 +58,8 @@ def command_info(args: argparse.Namespace) -> int:
         return 1
 
     inspector = ISOInspector(args.iso)
-    info = inspector.inspect()
+    compute_hash = getattr(args, "hash", False)
+    info = inspector.inspect(compute_hash=compute_hash)
 
     print(f"\n--- ISO Analysis: {os.path.basename(args.iso)} ---")
     print(f"File Path:              {info.file_path}")
@@ -72,8 +73,29 @@ def command_info(args: argparse.Namespace) -> int:
     print(f"Recommended Mode:       {info.recommended_mode.upper()}")
     print(f"Recommended Scheme:     {info.recommended_partition_scheme}")
     print(f"Recommended Target:     {info.recommended_target_system}")
+    if info.sha256:
+        print(f"SHA-256 Checksum:       {info.sha256}")
+    if info.md5:
+        print(f"MD5 Checksum:           {info.md5}")
     print("-" * 50)
     return 0
+
+
+def _parse_size_mb(size_str: Optional[str]) -> int:
+    """Parse size strings like '2G', '512M' to megabytes."""
+    if not size_str:
+        return 0
+    size_str = size_str.strip().upper()
+    try:
+        if size_str.endswith("G") or size_str.endswith("GB"):
+            num = float(size_str.rstrip("GB"))
+            return int(num * 1024)
+        elif size_str.endswith("M") or size_str.endswith("MB"):
+            num = float(size_str.rstrip("MB"))
+            return int(num)
+        return int(size_str)
+    except Exception:
+        return 0
 
 
 def command_burn(args: argparse.Namespace) -> int:
@@ -94,11 +116,16 @@ def command_burn(args: argparse.Namespace) -> int:
     info = inspector.inspect()
 
     mode = args.mode or info.recommended_mode
+    verify = getattr(args, "verify", False)
+    persistence_mb = _parse_size_mb(getattr(args, "persistence_size", None))
 
     print(f"\nReady to write:")
-    print(f"  Source:  {args.iso} ({info.file_size_human})")
-    print(f"  Target:  {target_dev.display_name}")
-    print(f"  Mode:    {mode.upper()}")
+    print(f"  Source:       {args.iso} ({info.file_size_human})")
+    print(f"  Target:       {target_dev.display_name}")
+    print(f"  Mode:         {mode.upper()}")
+    print(f"  Verification: {'Enabled (post-write SHA256 readback)' if verify else 'Disabled'}")
+    if persistence_mb > 0:
+        print(f"  Persistence:  {persistence_mb} MB (casper-rw ext4 partition)")
 
     if getattr(args, "dry_run", False):
         print("\n✔ [Dry-Run] Target safety validated and write parameters verified without hardware modification.")
@@ -127,7 +154,7 @@ def command_burn(args: argparse.Namespace) -> int:
     start = time.time()
 
     if mode == "raw":
-        writer = RawWriter(source_path=args.iso, target_device=target_dev.path)
+        writer = RawWriter(source_path=args.iso, target_device=target_dev.path, verify=verify)
     elif info.is_windows:
         writer = WindowsWriter(
             source_path=args.iso,
@@ -143,6 +170,7 @@ def command_burn(args: argparse.Namespace) -> int:
             partition_scheme=args.scheme or info.recommended_partition_scheme,
             file_system=args.fs or "fat32",
             volume_label=args.label or info.volume_id,
+            persistence_size_mb=persistence_mb,
         )
 
     success = writer.write(progress_callback=render_progress_bar)
@@ -180,6 +208,7 @@ def main() -> int:
     # Command: info
     parser_info = subparsers.add_parser("info", help="Inspect and display ISO file boot properties")
     parser_info.add_argument("iso", help="Path to ISO or image file")
+    parser_info.add_argument("--hash", action="store_true", help="Calculate SHA-256 and MD5 image checksums")
 
     # Command: burn
     parser_burn = subparsers.add_parser("burn", help="Burn image file to target USB drive")
@@ -189,6 +218,8 @@ def main() -> int:
     parser_burn.add_argument("--scheme", choices=["GPT", "MBR"], help="Partition scheme (GPT / MBR)")
     parser_burn.add_argument("--fs", choices=["fat32", "ntfs", "exfat", "ext4"], help="Filesystem format")
     parser_burn.add_argument("--label", help="Custom volume label")
+    parser_burn.add_argument("--persistence-size", help="Create secondary persistent storage partition (e.g. 2G, 4G, 512M)")
+    parser_burn.add_argument("--verify", action="store_true", help="Verify written blocks against source image hash")
     parser_burn.add_argument("--allow-internal", action="store_true", help="Allow targeting internal drives (CAUTION)")
     parser_burn.add_argument("--bypass-tpm", action="store_true", help="Bypass Windows 11 TPM 2.0 and CPU checks")
     parser_burn.add_argument("--bypass-secure-boot", action="store_true", help="Bypass Windows 11 Secure Boot requirement")
