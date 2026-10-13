@@ -35,6 +35,7 @@ class PartitionWriter(BaseWriter):
         volume_label: str = "RUFUS_USB",
         post_extract_callback: Optional[PostExtractCallback] = None,
         dry_run: bool = False,
+        persistence_size_mb: int = 0,
     ) -> None:
         super().__init__(source_path, target_device)
         self.partition_scheme = partition_scheme.upper()
@@ -42,6 +43,7 @@ class PartitionWriter(BaseWriter):
         self.volume_label = volume_label[:11] if self.file_system == "fat32" else volume_label
         self.post_extract_callback = post_extract_callback
         self.dry_run = dry_run
+        self.persistence_size_mb = persistence_size_mb
 
     def _get_partition_path(self, part_num: int = 1) -> str:
         """Derive partition device path (handles /dev/sdX1 vs /dev/nvme0n1p1)."""
@@ -87,48 +89,53 @@ class PartitionWriter(BaseWriter):
         # Step 2: Create Partition Table
         emit(15.0, f"Creating {self.partition_scheme} partition table...")
         logger.info(f"Creating {self.partition_scheme} partition table on {self.target_device}...")
+
+        # If persistence requested, calculate boundary
+        if self.persistence_size_mb > 0:
+            part1_end = f"-{self.persistence_size_mb}MiB"
+        else:
+            part1_end = "100%"
+
         if self.partition_scheme == "GPT":
-            subprocess.run(
-                [
-                    "parted",
-                    "-s",
-                    self.target_device,
-                    "mklabel",
-                    "gpt",
-                    "mkpart",
-                    "primary",
-                    "fat32",
-                    "1MiB",
-                    "100%",
-                    "set",
-                    "1",
-                    "esp",
-                    "on",
-                ],
-                check=True,
-                capture_output=True,
-            )
+            cmd = [
+                "parted",
+                "-s",
+                self.target_device,
+                "mklabel",
+                "gpt",
+                "mkpart",
+                "primary",
+                "fat32",
+                "1MiB",
+                part1_end,
+                "set",
+                "1",
+                "esp",
+                "on",
+            ]
+            if self.persistence_size_mb > 0:
+                cmd.extend(["mkpart", "primary", "ext4", part1_end, "100%"])
+            subprocess.run(cmd, check=True, capture_output=True)
         else:  # MBR / msdos
-            subprocess.run(
-                [
-                    "parted",
-                    "-s",
-                    self.target_device,
-                    "mklabel",
-                    "msdos",
-                    "mkpart",
-                    "primary",
-                    "fat32",
-                    "1MiB",
-                    "100%",
-                    "set",
-                    "1",
-                    "boot",
-                    "on",
-                ],
-                check=True,
-                capture_output=True,
-            )
+            cmd = [
+                "parted",
+                "-s",
+                self.target_device,
+                "mklabel",
+                "msdos",
+                "mkpart",
+                "primary",
+                "fat32",
+                "1MiB",
+                part1_end,
+                "set",
+                "1",
+                "boot",
+                "on",
+            ]
+            if self.persistence_size_mb > 0:
+                cmd.extend(["mkpart", "primary", "ext4", part1_end, "100%"])
+            subprocess.run(cmd, check=True, capture_output=True)
 
         # Allow kernel to register partitions
         subprocess.run(["partprobe", self.target_device], capture_output=True)
@@ -160,6 +167,17 @@ class PartitionWriter(BaseWriter):
             )
         else:
             raise ValueError(f"Unsupported filesystem: {self.file_system}")
+
+        # Format secondary persistence partition if present
+        if self.persistence_size_mb > 0:
+            pers_part = self._get_partition_path(2)
+            emit(35.0, f"Formatting persistence partition {pers_part} as EXT4 (casper-rw)...")
+            logger.info(f"Formatting persistence partition {pers_part} as ext4...")
+            subprocess.run(
+                ["mkfs.ext4", "-F", "-L", "casper-rw", pers_part],
+                check=True,
+                capture_output=True,
+            )
 
         # Step 4: Extract ISO Contents
         emit(40.0, "Mounting target filesystem...")

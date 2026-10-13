@@ -4,6 +4,7 @@ ISO Inspection and Boot Media Classifier for Linux Rufus.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import struct
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ class ISOInfo:
     recommended_mode: str = "raw"  # "raw" (DD) or "partition" (Extract)
     recommended_partition_scheme: str = "GPT"  # "GPT" or "MBR"
     recommended_target_system: str = "UEFI (non CSM)"  # "UEFI" or "BIOS"
+    sha256: Optional[str] = None
+    md5: Optional[str] = None
 
     @property
     def file_size_human(self) -> str:
@@ -45,13 +48,32 @@ class ISOInspector:
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
 
-    def inspect(self) -> ISOInfo:
+    def compute_hashes(self, block_size: int = 1024 * 1024) -> tuple[str, str]:
+        """Compute (sha256, md5) checksums of the image file."""
+        sha256_hash = hashlib.sha256()
+        md5_hash = hashlib.md5()
+        with open(self.file_path, "rb") as f:
+            while chunk := f.read(block_size):
+                sha256_hash.update(chunk)
+                md5_hash.update(chunk)
+        return sha256_hash.hexdigest(), md5_hash.hexdigest()
+
+    def inspect(self, compute_hash: bool = False) -> ISOInfo:
         """Analyze the image file and return ISOInfo."""
         if not os.path.exists(self.file_path):
             raise FileNotFoundError(f"Image file not found: {self.file_path}")
 
         file_size = os.path.getsize(self.file_path)
-        info = ISOInfo(file_path=self.file_path, file_size=file_size)
+        sha256_val, md5_val = None, None
+        if compute_hash:
+            sha256_val, md5_val = self.compute_hashes()
+
+        info = ISOInfo(
+            file_path=self.file_path,
+            file_size=file_size,
+            sha256=sha256_val,
+            md5=md5_val,
+        )
 
         if file_size < 32768:
             # File too small to be a standard ISO

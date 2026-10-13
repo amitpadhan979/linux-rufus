@@ -86,6 +86,23 @@ class TestISOInspector(unittest.TestCase):
         self.assertEqual(info.recommended_mode, "partition")
         self.assertEqual(info.recommended_partition_scheme, "GPT")
 
+    def test_compute_hashes(self):
+        sample = os.path.join(self.temp_dir, "hash_sample.bin")
+        payload = b"TEST_PAYLOAD_FOR_HASH"
+        with open(sample, "wb") as f:
+            f.write(payload)
+
+        inspector = ISOInspector(sample)
+        sha256_val, md5_val = inspector.compute_hashes()
+
+        import hashlib
+        self.assertEqual(sha256_val, hashlib.sha256(payload).hexdigest())
+        self.assertEqual(md5_val, hashlib.md5(payload).hexdigest())
+
+        info = inspector.inspect(compute_hash=True)
+        self.assertEqual(info.sha256, sha256_val)
+        self.assertEqual(info.md5, md5_val)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -100,5 +100,62 @@ class RawWriter(BaseWriter):
                 except OSError:
                     os.sync()
 
+        # Step 2: Post-write verification if requested
+        if self.verify:
+            logger.info(f"Verifying written data on {self.target_device} against {self.source_path}...")
+            if progress_callback:
+                progress_callback(
+                    WriteProgress(
+                        bytes_written=0,
+                        total_bytes=total_bytes,
+                        percentage=0.0,
+                        speed_bytes_sec=0,
+                        eta_seconds=0,
+                        status_text="Verifying written image...",
+                    )
+                )
+
+            verified_bytes = 0
+            v_start = time.time()
+            v_last_update = v_start
+
+            with open(self.source_path, "rb") as src, open(self.target_device, "rb") as dst:
+                while verified_bytes < total_bytes:
+                    if self.is_cancelled:
+                        logger.warning("Verification cancelled by user.")
+                        return False
+
+                    src_chunk = src.read(self.block_size)
+                    dst_chunk = dst.read(len(src_chunk))
+
+                    if src_chunk != dst_chunk:
+                        logger.error(
+                            f"Verification mismatch at offset {verified_bytes} bytes! Written data is corrupted."
+                        )
+                        return False
+
+                    verified_bytes += len(src_chunk)
+                    now = time.time()
+                    if progress_callback and (now - v_last_update >= 0.1 or verified_bytes == total_bytes):
+                        elapsed = now - v_start
+                        speed = verified_bytes / elapsed if elapsed > 0 else 0
+                        remaining = total_bytes - verified_bytes
+                        eta = remaining / speed if speed > 0 else 0
+                        pct = (verified_bytes / total_bytes) * 100.0
+
+                        progress_callback(
+                            WriteProgress(
+                                bytes_written=verified_bytes,
+                                total_bytes=total_bytes,
+                                percentage=pct,
+                                speed_bytes_sec=speed,
+                                eta_seconds=eta,
+                                status_text=f"Verifying ({pct:.1f}%)...",
+                            )
+                        )
+                        v_last_update = now
+
+            logger.info("Verification passed: written data matches source image perfectly.")
+
         logger.info(f"Successfully wrote {bytes_written} bytes to {self.target_device}")
         return True

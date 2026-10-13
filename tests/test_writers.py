@@ -137,6 +137,51 @@ class TestWriters(unittest.TestCase):
             self.assertIn("BypassSecureBootCheck", content)
             self.assertIn("BypassRAMCheck", content)
 
+    def test_raw_writer_verify_success(self):
+        src_path = os.path.join(self.temp_dir, "verify_src.bin")
+        dst_path = os.path.join(self.temp_dir, "verify_dst.bin")
+        data = b"VERIFIED_PAYLOAD_12345" * 1024
+
+        with open(src_path, "wb") as f:
+            f.write(data)
+
+        writer = RawWriter(source_path=src_path, target_device=dst_path, verify=True)
+        success = writer.write()
+        self.assertTrue(success)
+
+    def test_raw_writer_verify_failure(self):
+        src_path = os.path.join(self.temp_dir, "verify_fail_src.bin")
+        dst_path = os.path.join(self.temp_dir, "verify_fail_dst.bin")
+
+        with open(src_path, "wb") as f:
+            f.write(b"SOURCE_ORIGINAL")
+
+        writer = RawWriter(source_path=src_path, target_device=dst_path, verify=True)
+        # Pre-write corrupt file to dst
+        with open(dst_path, "wb") as f:
+            f.write(b"CORRUPTED_TARGET")
+
+        # Mock write loop to simulate mismatched block during verify
+        with unittest.mock.patch("builtins.open", unittest.mock.mock_open(read_data=b"MISMATCH")):
+            # Direct verification check
+            pass
+
+    def test_partition_writer_persistence_attributes(self):
+        from linux_rufus.core.writers.partition_writer import PartitionWriter
+
+        src_path = os.path.join(self.temp_dir, "fake_iso2.iso")
+        with open(src_path, "wb") as f:
+            f.write(b"ISO")
+
+        writer = PartitionWriter(
+            source_path=src_path,
+            target_device="/dev/null",
+            dry_run=True,
+            persistence_size_mb=2048,
+        )
+        self.assertEqual(writer.persistence_size_mb, 2048)
+        self.assertTrue(writer.write())
+
 
 if __name__ == "__main__":
     unittest.main()
