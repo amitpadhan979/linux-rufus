@@ -20,9 +20,9 @@ Unlike Windows Rufus (which is Windows-only), **`linux-rufus`** brings the belov
 ## 🚀 Installation
 
 ### From Debian / Ubuntu (`.deb`) Package
-Download the latest `linux-rufus_1.0.0_all.deb` from [Releases](https://github.com/amitpadhan979/linux-rufus/releases) and install via `apt`:
+Download the latest `linux-rufus_1.1.1_all.deb` from [Releases](https://github.com/amitpadhan979/linux-rufus/releases) and install via `apt`:
 ```bash
-sudo apt install ./linux-rufus_1.0.0_all.deb
+sudo apt install ./linux-rufus_1.1.1_all.deb
 ```
 
 ### Using pip
@@ -105,7 +105,10 @@ linux-rufus burn --iso ubuntu-24.04-desktop-amd64.iso --target /dev/sdb --verify
 Directly writing to block devices is a dangerous operation on Linux. `linux-rufus` implements a multi-layer safety lock:
 1. **Removable Media Only**: By default, only devices flagged with `RM=1` or `TRAN=usb` are eligible targets.
 2. **System Disk Blacklist**: Automatically inspects active mountpoints via `/proc/mounts` and `/proc/swaps`. Any device holding `/`, `/boot`, `/boot/efi`, `/home`, `/var`, `/usr`, or active swap partitions is hard-blocked.
-3. **Double Confirmation**: Both CLI and GUI display the target drive model, capacity, and require explicit confirmation before wiping partition tables.
+3. **Resilient Hardware Discovery (v1.1.1+)**:
+   - Tries modern JSON-capable `lsblk` (`MOUNTPOINTS` column) first, seamlessly falling back to legacy single-mountpoint columns on older `util-linux` distributions.
+   - Gracefully handles restricted/containerized environments where `/sys/block` throws `PermissionError` (Errno 13) by falling back to `/proc/partitions` and `udevadm`/`blockdev`.
+4. **Double Confirmation**: Both CLI and GUI display the target drive model, capacity, and require explicit confirmation before wiping partition tables.
 
 ---
 
